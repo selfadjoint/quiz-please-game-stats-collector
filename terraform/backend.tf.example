@@ -1,0 +1,17 @@
+Terraform Backend Configuration for S3
+Uncomment and configure this block in main.tf if you want to use S3 backend
+
+terraform {
+  backend "s3" {
+    bucket         = "your-terraform-state-bucket"
+    key            = "quiz-please-stats/terraform.tfstate"
+    region         = "eu-central-1"
+    encrypt        = true
+  }
+}
+
+To use this backend:
+1. Create an S3 bucket for Terraform state
+3. Uncomment the backend block above
+4. Update the values with your bucket name and region
+5. Run: terraform init -migrate-state

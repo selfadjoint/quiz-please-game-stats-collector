@@ -1,0 +1,36 @@
+# Example terraform.tfvars file
+# Copy this file to terraform.tfvars and fill in your values
+
+# AWS Configuration
+aws_region  = "us-east-1"
+aws_profile = "default"
+
+# Database Configuration (REQUIRED)
+db_host     = "your-postgres-host.amazonaws.com"
+db_port     = "5432"
+db_name     = "defaultdb"
+db_user     = "quiz_admin"
+db_password = "your-secure-password"
+
+# VPC Configuration (if database is in VPC)
+# vpc_id         = "vpc-xxxxxxxxx"
+# vpc_subnet_ids = ["subnet-xxxxxxxx", "subnet-yyyyyyyy"]
+
+# Lambda Configuration
+lambda_timeout = 600  # 10 minutes
+lambda_memory  = 512  # MB
+
+# Schedule (daily at 2 AM UTC)
+schedule_expression = "cron(0 2 * * ? *)"
+
+# Monitoring
+notification_email  = "your-email@example.com"
+enable_error_alarm  = true
+log_retention_days  = 14
+
+# Tags
+tags = {
+  Project     = "QuizPleaseStats"
+  Environment = "production"
+  ManagedBy   = "Terraform"
+}
