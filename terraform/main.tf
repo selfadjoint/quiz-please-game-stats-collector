@@ -18,9 +18,32 @@ provider "aws" {
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}
 
-# Use pre-built Lambda deployment package created by build_lambda.sh
-# This package includes all Python dependencies (psycopg2, requests, beautifulsoup4)
-# Run ./build_lambda.sh before terraform apply
+# Build Lambda deployment package with dependencies
+resource "null_resource" "lambda_build" {
+  triggers = {
+    requirements = filemd5("${path.module}/../src/requirements.txt")
+    source_code  = filemd5("${path.module}/../src/lambda_function.py")
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      cd "${path.module}"
+      rm -rf lambda_build
+      mkdir -p lambda_build
+      pip3 install -r ../src/requirements.txt -t lambda_build --quiet
+      cp ../src/lambda_function.py lambda_build/
+    EOT
+  }
+}
+
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_build"
+  output_path = "${path.module}/lambda_deployment.zip"
+
+  depends_on = [null_resource.lambda_build]
+}
 
 # SSM Parameters for Database Credentials
 resource "aws_ssm_parameter" "db_host" {
@@ -138,12 +161,12 @@ resource "aws_security_group" "lambda_sg" {
 # Lambda Function
 resource "aws_lambda_function" "game_stats_collector" {
   description      = "Collect quiz game stats from yerevan.quizplease.ru and store in PostgreSQL"
-  function_name    = "QuizPleaseStats"
+  function_name    = var.resource_name
   role             = aws_iam_role.lambda_execution_role.arn
   handler          = "lambda_function.lambda_handler"
   runtime          = "python3.11"
-  filename         = "${path.module}/lambda_deployment.zip"
-  source_code_hash = filebase64sha256("${path.module}/lambda_deployment.zip")
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   timeout          = var.lambda_timeout
   memory_size      = var.lambda_memory
 

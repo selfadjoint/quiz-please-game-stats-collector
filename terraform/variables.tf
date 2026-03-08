@@ -19,7 +19,7 @@ variable "aws_profile" {
 variable "resource_name" {
   description = "Name prefix for all resources"
   type        = string
-  default     = "quiz-please-stats-collector"
+  default     = "QuizPleazeStats"
 }
 
 variable "tags" {

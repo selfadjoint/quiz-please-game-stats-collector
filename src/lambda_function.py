@@ -144,6 +144,29 @@ def get_last_processed_game_id() -> int:
         raise
 
 
+def get_games_without_results() -> List[int]:
+    """
+    Retrieves game IDs that exist in the games table but have no team participation data.
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT g.id
+                    FROM quizplease.games g
+                    LEFT JOIN quizplease.team_game_participations p ON g.id = p.game_id
+                    WHERE p.id IS NULL
+                    ORDER BY g.id
+                """)
+                game_ids = [row[0] for row in cur.fetchall()]
+                if game_ids:
+                    logger.info(f"Found {len(game_ids)} games without results: {game_ids}")
+                return game_ids
+    except Exception as e:
+        logger.error(f"Failed to get games without results: {e}")
+        raise
+
+
 def get_game_ids(last_game_id: int) -> List[int]:
     """
     Fetches new game IDs from the website that are greater than last_game_id.
@@ -538,12 +561,20 @@ def lambda_handler(event, context):
         # Get the last processed game ID
         last_game_id = get_last_processed_game_id()
 
-        # Fetch new game IDs
+        # Fetch new game IDs from the website
         new_game_ids = get_game_ids(last_game_id)
-        logger.info(f"Found {len(new_game_ids)} new games to process")
+        logger.info(f"Found {len(new_game_ids)} new games on the website")
 
-        if not new_game_ids:
-            logger.info("No new games to process")
+        # Also find games already in DB but without results (pre-created by another function)
+        games_without_results = get_games_without_results()
+
+        # Merge and deduplicate, keeping sorted order
+        all_game_ids = sorted(set(new_game_ids + games_without_results))
+        logger.info(f"Total games to process: {len(all_game_ids)} "
+                     f"({len(new_game_ids)} new, {len(games_without_results)} without results)")
+
+        if not all_game_ids:
+            logger.info("No games to process")
             return {
                 'statusCode': 200,
                 'body': 'No new games to process'
@@ -553,7 +584,7 @@ def lambda_handler(event, context):
         processed_count = 0
         failed_count = 0
 
-        for game_id in new_game_ids:
+        for game_id in all_game_ids:
             try:
                 logger.info(f"Processing game {game_id}")
                 game_data = parse_game_data(game_id)
