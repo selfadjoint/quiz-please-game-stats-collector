@@ -18,7 +18,7 @@ provider "aws" {
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}
 
-# Build Lambda deployment package with dependencies
+# Build Lambda deployment package with dependencies using Docker for Linux compatibility
 resource "null_resource" "lambda_build" {
   triggers = {
     requirements = filemd5("${path.module}/../src/requirements.txt")
@@ -31,8 +31,12 @@ resource "null_resource" "lambda_build" {
       cd "${path.module}"
       rm -rf lambda_build
       mkdir -p lambda_build
-      pip3 install -r ../src/requirements.txt -t lambda_build --quiet
-      cp ../src/lambda_function.py lambda_build/
+      docker run --rm \
+        --platform linux/amd64 \
+        -v "$(pwd)/../src:/src:ro" \
+        -v "$(pwd)/lambda_build:/out" \
+        python:3.11-slim \
+        sh -c "pip install -r /src/requirements.txt -t /out --quiet && cp /src/lambda_function.py /out/"
     EOT
   }
 }
