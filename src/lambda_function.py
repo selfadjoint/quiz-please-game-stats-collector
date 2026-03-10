@@ -266,8 +266,9 @@ def parse_date_from_game_page(soup: BeautifulSoup, game_id: int) -> Tuple[str, O
                 break
 
     if not date_text:
-        logger.warning(f"Could not parse date for game {game_id}, using placeholder")
-        return "2025-01-01", None
+        logger.warning(f"Could not parse date for game {game_id}, returning None. "
+                       f"Page may have CAPTCHA or changed layout.")
+        return None, None
 
     # Parse date: [day, month_name] or [day, month_name, time]
     day = date_text[0].zfill(2)
@@ -481,25 +482,28 @@ def save_game_to_db(game_data: Dict):
 
             try:
                 # Insert or update game
+                # Use COALESCE to preserve existing non-null values when new values are null/empty.
+                # For INSERT: COALESCE(%s, '1970-01-01') satisfies NOT NULL if date parsing failed.
+                # For UPDATE: COALESCE(EXCLUDED, existing) keeps the existing value when new is NULL.
                 cur.execute("""
                     INSERT INTO quizplease.games (id, game_date, game_time, venue, category, game_name, game_number)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, COALESCE(%s, '1970-01-01'::date), %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
-                        game_date = EXCLUDED.game_date,
-                        game_time = EXCLUDED.game_time,
-                        venue = EXCLUDED.venue,
-                        category = EXCLUDED.category,
-                        game_name = EXCLUDED.game_name,
-                        game_number = EXCLUDED.game_number,
+                        game_date = COALESCE(NULLIF(EXCLUDED.game_date, '1970-01-01'::date), quizplease.games.game_date),
+                        game_time = COALESCE(EXCLUDED.game_time, quizplease.games.game_time),
+                        venue = COALESCE(EXCLUDED.venue, quizplease.games.venue),
+                        category = COALESCE(EXCLUDED.category, quizplease.games.category),
+                        game_name = COALESCE(EXCLUDED.game_name, quizplease.games.game_name),
+                        game_number = COALESCE(EXCLUDED.game_number, quizplease.games.game_number),
                         updated_at = CURRENT_TIMESTAMP
                 """, (
                     game_data['id'],
                     game_data['date'],
-                    game_data['time'],
-                    game_data['venue'],
-                    game_data['category'],
-                    game_data['game_name'],
-                    game_data['game_number']
+                    game_data['time'] or None,
+                    game_data['venue'] or None,
+                    game_data['category'] or None,
+                    game_data['game_name'] or None,
+                    game_data['game_number'] or None
                 ))
 
                 # Process each team
